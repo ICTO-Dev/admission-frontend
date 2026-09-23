@@ -1,0 +1,6 @@
+{
+  "name": "CBSUA Online Admission & Exam Scheduling System",
+  "description": "An online Admission and Examination Scheduling System for Central Bicol State University of Agriculture (CBSUA). Digitizes the Student Directory Form (ADM-FR-002) and automates the applicant workflow, schedule capacity validations, and notification generation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
