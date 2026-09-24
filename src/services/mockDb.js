@@ -89,6 +89,9 @@ export const DEFAULT_APPLICATIONS = [
     nationality: "Filipino",
     mobileNumber: "09171234567",
     emailAddress: "maria.santos@gmail.com",
+    isIndigenous: false,
+    indigenousGroup: "",
+    isSoloParent: false,
     fatherProfile: {
       fullName: "Juan Delgado Santos",
       age: 48,

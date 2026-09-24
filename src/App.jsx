@@ -10,25 +10,27 @@ import ApplicantSearch from "./features/applicant/components/ApplicantSearch/App
 
 import AdminLogin from "./features/admin/components/AdminLogin.jsx";
 import ProcessorDashboard from "./features/admin/components/ProcessorDashboard/ProcessorDashboard.jsx";
+import { useAuth } from "./hooks/index.js";
 
 export default function App() {
   const navigate = useNavigate();
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const { isAuthenticated, user, logout } = useAuth();
 
   const handleApplySuccess = (appNo) => {
     navigate(`/status/${appNo}`);
     window.scrollTo(0, 0);
   };
 
-  const handleAdminLogout = () => {
-    setIsAdminLoggedIn(false);
+  const handleAdminLogout = async () => {
+    await logout();
+    navigate("/admin/login");
   };
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col font-sans text-slate-800 selection:bg-emerald-600 selection:text-white">
-      <Header isAdminLoggedIn={isAdminLoggedIn} onAdminLogout={handleAdminLogout} />
+      <Header isAdminLoggedIn={isAuthenticated} currentUser={user} onAdminLogout={handleAdminLogout} />
 
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-20">
+      <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 relative z-20">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/apply" element={<WizardForm onSubmitSuccess={handleApplySuccess} />} />
@@ -38,10 +40,10 @@ export default function App() {
           <Route
             path="/admin/login"
             element={
-              isAdminLoggedIn ? (
+              isAuthenticated ? (
                 <Navigate to="/admin/dashboard" replace />
               ) : (
-                <AdminLogin onLoginSuccess={() => setIsAdminLoggedIn(true)} />
+                <AdminLogin />
               )
             }
           />
@@ -49,7 +51,7 @@ export default function App() {
           <Route
             path="/admin/dashboard"
             element={
-              isAdminLoggedIn ? (
+              isAuthenticated ? (
                 <ProcessorDashboard onLogout={handleAdminLogout} />
               ) : (
                 <Navigate to="/admin/login" replace />

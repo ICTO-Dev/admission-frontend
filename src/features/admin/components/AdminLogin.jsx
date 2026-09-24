@@ -2,42 +2,53 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Shield, Mail, Lock, AlertCircle, Sparkles, LogIn, ArrowRight } from "lucide-react";
 
+import { useAuth } from "../../../hooks/index.js";
+
 export default function AdminLogin({ onLoginSuccess }) {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const demoEmail = "admin@cbsua.edu.ph";
-  const demoPassword = "adminpassword";
+  const demoPassword = "password123";
 
-  const handleLogin = (e) => {
-    e.preventDefault();
+  const executeLogin = async (loginEmail, loginPassword) => {
     setError(null);
     setIsLoading(true);
 
-    setTimeout(() => {
-      if (email.toLowerCase() === demoEmail && password === demoPassword) {
-        onLoginSuccess();
-        navigate("/admin/dashboard");
+    try {
+      const result = await login({
+        email: loginEmail,
+        password: loginPassword,
+      });
+
+      if (result.success) {
+        if (onLoginSuccess) {
+          onLoginSuccess(result.data?.user);
+        }
+        navigate("/admin/dashboard", { replace: true });
       } else {
-        setError("Invalid email address or passcode. Please check the sample credentials provided.");
-        setIsLoading(false);
+        setError(result.error || "Invalid email or password. Please verify your credentials.");
       }
-    }, 600);
+    } catch {
+      setError("An unexpected error occurred during login. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    executeLogin(email, password);
   };
 
   const handleQuickLogin = () => {
     setEmail(demoEmail);
     setPassword(demoPassword);
-    setError(null);
-    setIsLoading(true);
-
-    setTimeout(() => {
-      onLoginSuccess();
-      navigate("/admin/dashboard");
-    }, 400);
+    executeLogin(demoEmail, demoPassword);
   };
 
   return (

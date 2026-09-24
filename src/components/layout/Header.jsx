@@ -2,7 +2,7 @@ import React from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { LogOut, Star, UserCheck, FileText, Search, ShieldCheck } from "lucide-react";
 
-export default function Header({ isAdminLoggedIn, onAdminLogout }) {
+export default function Header({ isAdminLoggedIn, currentUser, onAdminLogout }) {
   const navigate = useNavigate();
 
   return (
@@ -80,7 +80,7 @@ export default function Header({ isAdminLoggedIn, onAdminLogout }) {
               <span className="font-bold text-emerald-400 text-[11px]">ADMINISTRATIVE SESSION ACTIVE</span>
             </div>
             <div className="flex items-center gap-4 text-[11px] text-slate-300">
-              <span>admin@cbsua.edu.ph</span>
+              <span className="text-emerald-300 font-semibold">{currentUser?.name || currentUser?.email || "Admin User"}</span>
               <span>|</span>
               <button
                 onClick={() => {
