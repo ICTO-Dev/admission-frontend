@@ -1,9 +1,11 @@
 import React from "react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { LogOut, Star, UserCheck, FileText, Search, ShieldCheck } from "lucide-react";
 
 export default function Header({ isAdminLoggedIn, currentUser, onAdminLogout }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminPath = location.pathname.startsWith("/admin") && location.pathname !== "/admin/login";
 
   return (
     <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-xs">
@@ -58,7 +60,7 @@ export default function Header({ isAdminLoggedIn, currentUser, onAdminLogout }) 
               to="/admin/dashboard"
               className={({ isActive }) =>
                 `flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition ${
-                  isActive
+                  isActive || isAdminPath
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
                 }`

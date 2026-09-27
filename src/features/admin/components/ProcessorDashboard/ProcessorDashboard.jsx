@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { ApplicationStatus } from '../../../../config/types.js';
 import {
   fetchStats,
@@ -46,8 +47,11 @@ import {
   Box
 } from "lucide-react";
 import OfficialFormView from '../../../applicant/components/OfficialFormView.jsx';
+import ExamScheduleManager from '../ExamScheduleManager/ExamScheduleManager.jsx';
+import examScheduleService from '../../../../services/examScheduleService.js';
 
 export default function ProcessorDashboard({ onLogout }) {
+  const navigate = useNavigate();
   const [applications, setApplications] = useState([]);
   const [slots, setSlots] = useState([]);
   const [days, setDays] = useState([]);
@@ -95,13 +99,28 @@ export default function ProcessorDashboard({ onLogout }) {
   const [scheduleError, setScheduleError] = useState("");
   const [adminSubTab, setAdminSubTab] = useState("dashboard");
 
+  // Action loading states
+  const [isApproving, setIsApproving] = useState(false);
+  const [isRejecting, setIsRejecting] = useState(false);
+  const [isAssigning, setIsAssigning] = useState(false);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
       const appData = await fetchApplications();
       setApplications(appData);
-      const slotsData = await fetchSlots();
-      setSlots(slotsData);
+      try {
+        const realSlots = await examScheduleService.getExamSchedules();
+        if (realSlots && realSlots.length > 0) {
+          setSlots(realSlots);
+        } else {
+          const slotsData = await fetchSlots();
+          setSlots(slotsData);
+        }
+      } catch (slotErr) {
+        const slotsData = await fetchSlots();
+        setSlots(slotsData);
+      }
       const statsData = await fetchStats();
       setStats(statsData);
       const daysData = await fetchDays();
@@ -124,6 +143,7 @@ export default function ProcessorDashboard({ onLogout }) {
   }, []);
 
   const handleApproveForExam = async (appId) => {
+    setIsApproving(true);
     try {
       const updatedApp = await updateApplicationStatus(appId, ApplicationStatus.APPROVED_FOR_EXAM);
       setApplications(applications.map((a) => a.id === appId ? updatedApp : a));
@@ -134,12 +154,15 @@ export default function ProcessorDashboard({ onLogout }) {
       setStats(statsData);
     } catch (err) {
       alert("Error approving application");
+    } finally {
+      setIsApproving(false);
     }
   };
 
   const handleRejectSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedApp) return;
+    if (!selectedApp || isRejecting) return;
+    setIsRejecting(true);
     try {
       const updatedApp = await updateApplicationStatus(selectedApp.id, ApplicationStatus.REJECTED, rejectionReason);
       setApplications(applications.map((a) => a.id === selectedApp.id ? updatedApp : a));
@@ -150,18 +173,23 @@ export default function ProcessorDashboard({ onLogout }) {
       setStats(statsData);
     } catch (err) {
       alert("Error rejecting application");
+    } finally {
+      setIsRejecting(false);
     }
   };
 
   const handleAssignSchedule = async (e) => {
     e.preventDefault();
-    if (!selectedApp || !selectedSlotId) return;
+    if (!selectedApp || !selectedSlotId || isAssigning) return;
     setScheduleError("");
     const chosenSlot = slots.find((s) => s.id === selectedSlotId);
-    if (chosenSlot && chosenSlot.currentEnrolledCount >= chosenSlot.maxCapacity) {
-      setScheduleError(`Automated Conflict Blocked: Room '${chosenSlot.room}' is fully booked for this batch. Select another slot.`);
+    const enrolled = chosenSlot?.applications_count ?? chosenSlot?.currentEnrolledCount ?? chosenSlot?.total_applicants ?? 0;
+    const totalSeats = chosenSlot?.total_seats ?? chosenSlot?.room?.total_seat ?? chosenSlot?.max_capacity ?? 30;
+    if (chosenSlot && (enrolled >= totalSeats || chosenSlot.status === "Full")) {
+      setScheduleError(`Automated Conflict Blocked: Room '${chosenSlot.room?.room_name || chosenSlot.room || "Room"}' is at full capacity (${enrolled}/${totalSeats} seats). No more applicants can be assigned to this schedule.`);
       return;
     }
+    setIsAssigning(true);
     try {
       const updatedApp = await scheduleApplication(selectedApp.id, {
         slotId: selectedSlotId,
@@ -170,12 +198,24 @@ export default function ProcessorDashboard({ onLogout }) {
       setApplications(applications.map((a) => a.id === selectedApp.id ? updatedApp : a));
       setSelectedApp(updatedApp);
       setSelectedSlotId("");
-      const slotsData = await fetchSlots();
-      setSlots(slotsData);
+      try {
+        const realSlots = await examScheduleService.getExamSchedules();
+        if (realSlots && realSlots.length > 0) {
+          setSlots(realSlots);
+        } else {
+          const slotsData = await fetchSlots();
+          setSlots(slotsData);
+        }
+      } catch (err) {
+        const slotsData = await fetchSlots();
+        setSlots(slotsData);
+      }
       const statsData = await fetchStats();
       setStats(statsData);
     } catch (err) {
       setScheduleError(err.message || "Conflict checking caught an issue.");
+    } finally {
+      setIsAssigning(false);
     }
   };
 
@@ -433,8 +473,8 @@ export default function ProcessorDashboard({ onLogout }) {
           </button>
 
           <button
-            onClick={() => setAdminSubTab("submissions")}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition relative cursor-pointer ${adminSubTab === "submissions" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"}`}
+            onClick={() => navigate("/admin/submissions")}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition relative cursor-pointer"
           >
             <Users size={13} />
             <span>Applicant Submissions Board</span>
@@ -446,8 +486,8 @@ export default function ProcessorDashboard({ onLogout }) {
           </button>
 
           <button
-            onClick={() => setAdminSubTab("slots")}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${adminSubTab === "slots" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"}`}
+            onClick={() => navigate("/admin/schedules")}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition cursor-pointer"
           >
             <Calendar size={13} />
             <span>CBSUA Entrance Examination Slots Manager</span>
@@ -720,14 +760,16 @@ export default function ProcessorDashboard({ onLogout }) {
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         onClick={() => handleApproveForExam(selectedApp.id)}
-                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-xs shadow-sm transition cursor-pointer"
+                        disabled={isApproving || isRejecting}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded font-bold text-xs shadow-sm transition cursor-pointer disabled:cursor-not-allowed"
                       >
-                        <Check size={14} />
-                        <span>Approve For Exam</span>
+                        {isApproving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                        <span>{isApproving ? "Approving..." : "Approve For Exam"}</span>
                       </button>
                       <button
                         onClick={() => setShowRejectModal(true)}
-                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded font-bold text-xs border border-rose-200 transition cursor-pointer"
+                        disabled={isApproving || isRejecting}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded font-bold text-xs border border-rose-200 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <X size={14} />
                         <span>Reject File</span>
@@ -749,13 +791,20 @@ export default function ProcessorDashboard({ onLogout }) {
                           <label className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Select Available Schedule Slot</label>
                           <select
                             required
+                            disabled={isAssigning}
                             value={selectedSlotId}
                             onChange={(e) => setSelectedSlotId(e.target.value)}
-                            className="w-full border border-emerald-200 bg-white rounded p-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none"
+                            className="w-full border border-emerald-200 bg-white rounded p-2 text-xs focus:ring-1 focus:ring-emerald-600 focus:outline-none disabled:opacity-50"
                           >
                             <option value="">-- Choose Exam Date & Room --</option>
                             {slots.map((s) => {
-                              const isFull = s.currentEnrolledCount >= s.maxCapacity;
+                              const enrolled = s.applications_count ?? s.currentEnrolledCount ?? s.total_applicants ?? 0;
+                              const totalSeats = s.total_seats ?? s.room?.total_seat ?? s.max_capacity ?? 30;
+                              const isFull = enrolled >= totalSeats || s.status === "Full";
+                              const date = s.exam_date || s.examDate;
+                              const time = s.start_time ? `${s.start_time.slice(0, 5)} - ${s.end_time?.slice(0, 5)}` : s.batchTime;
+                              const roomName = s.room?.room_name || s.room || "Room";
+                              const venueName = s.room?.venue?.venue_name ? ` (${s.room.venue.venue_name})` : "";
                               return (
                                 <option
                                   key={s.id}
@@ -763,7 +812,7 @@ export default function ProcessorDashboard({ onLogout }) {
                                   disabled={isFull}
                                   className={isFull ? "text-rose-500 font-semibold" : ""}
                                 >
-                                  {s.examDate} | {s.batchTime} ({s.room} - {s.currentEnrolledCount}/{s.maxCapacity} full) {isFull ? "[FULL]" : ""}
+                                  {date} | {time} [{roomName}{venueName}] ({enrolled}/{totalSeats} seats) {isFull ? "[FULL - NO AVAILABLE SEATS]" : `(${totalSeats - enrolled} available seats)`}
                                 </option>
                               );
                             })}
@@ -779,11 +828,20 @@ export default function ProcessorDashboard({ onLogout }) {
 
                         <button
                           type="submit"
-                          disabled={!selectedSlotId}
-                          className="w-full flex items-center justify-center gap-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded font-bold text-xs disabled:opacity-40 transition shadow-sm cursor-pointer"
+                          disabled={!selectedSlotId || isAssigning}
+                          className="w-full flex items-center justify-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded font-bold text-xs transition shadow-sm cursor-pointer disabled:cursor-not-allowed"
                         >
-                          <Calendar size={13} />
-                          <span>Confirm & Send Exam Permit</span>
+                          {isAssigning ? (
+                            <>
+                              <Loader2 size={13} className="animate-spin" />
+                              <span>Allocating & Sending Permit...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Calendar size={13} />
+                              <span>Confirm & Send Exam Permit</span>
+                            </>
+                          )}
                         </button>
                       </form>
                     </div>
@@ -801,6 +859,64 @@ export default function ProcessorDashboard({ onLogout }) {
             </div>
           )}
         </div>
+      )}
+
+      {/* Reject Reason Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-100 space-y-4 animate-scale-in">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+              <h3 className="text-sm font-bold text-slate-900">Reject Application File</h3>
+              <button
+                onClick={() => setShowRejectModal(false)}
+                disabled={isRejecting}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded disabled:opacity-50"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <form onSubmit={handleRejectSubmit} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                  Reason for Rejection / Deficiency
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  disabled={isRejecting}
+                  placeholder="e.g. Incomplete Form 138 / Blurred Good Moral Certificate"
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg p-2 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-rose-500 disabled:opacity-50"
+                />
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={isRejecting}
+                  onClick={() => setShowRejectModal(false)}
+                  className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isRejecting}
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white rounded-lg font-bold shadow flex items-center justify-center gap-1.5 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  {isRejecting && <Loader2 className="animate-spin" size={13} />}
+                  <span>{isRejecting ? "Rejecting..." : "Confirm Rejection"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {adminSubTab === "slots" && (
+        <ExamScheduleManager />
       )}
     </div>
   );

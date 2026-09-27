@@ -22,4 +22,27 @@ export {
   useBarangays,
   GEO_QUERY_KEYS,
 } from "./useGeo.js";
+export {
+  useSchoolYears,
+  useCreateSchoolYear,
+  useUpdateSchoolYear,
+  useDeleteSchoolYear,
+  useVenues,
+  useCreateVenue,
+  useUpdateVenue,
+  useDeleteVenue,
+  useRooms,
+  useCreateRoom,
+  useUpdateRoom,
+  useDeleteRoom,
+  useBatches,
+  useCreateBatch,
+  useUpdateBatch,
+  useDeleteBatch,
+  useExamSchedules,
+  useCreateExamSchedule,
+  useUpdateExamSchedule,
+  useDeleteExamSchedule,
+  EXAM_SCHEDULE_KEYS,
+} from "./useExamSchedules.js";
 

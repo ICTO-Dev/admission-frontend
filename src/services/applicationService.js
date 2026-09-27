@@ -49,7 +49,7 @@ export async function fetchApplicationByNo(appNo) {
 
 /**
  * Fetch applications list with pagination and search filters (Admin / Processor)
- * @param {Object} params - { search, status, page, per_page }
+ * @param {Object} params - { search, status, page, per_page, campus_id, school_year }
  * @returns {Promise<Object>}
  */
 export async function fetchApplications(params = {}) {
@@ -57,8 +57,50 @@ export async function fetchApplications(params = {}) {
   return response.data;
 }
 
+/**
+ * Update application evaluation status (Approved for Exam, Rejected, Pending).
+ * @param {string|number} appId
+ * @param {string} status
+ * @param {string|null} rejectionReason
+ * @returns {Promise<Object>}
+ */
+export async function updateApplicationStatus(appId, status, rejectionReason = null) {
+  try {
+    const response = await api.patch(`/applications/${encodeURIComponent(appId)}/status`, {
+      status,
+      rejectionReason,
+      rejection_reason: rejectionReason,
+    });
+    return response.data?.data || response.data;
+  } catch (error) {
+    const msg = error.response?.data?.message || error.message || "Failed to update application status";
+    throw new Error(msg);
+  }
+}
+
+/**
+ * Assign examination schedule slot to an applicant.
+ * @param {string|number} appId
+ * @param {Object} payload - { slotId, course }
+ * @returns {Promise<Object>}
+ */
+export async function scheduleApplication(appId, { slotId, course }) {
+  try {
+    const response = await api.post(`/applications/${encodeURIComponent(appId)}/assign-schedule`, {
+      slotId,
+      course,
+    });
+    return response.data?.data || response.data;
+  } catch (error) {
+    const msg = error.response?.data?.message || error.message || "Failed to allocate exam schedule";
+    throw new Error(msg);
+  }
+}
+
 export default {
   submitApplication,
   fetchApplicationByNo,
   fetchApplications,
+  updateApplicationStatus,
+  scheduleApplication,
 };

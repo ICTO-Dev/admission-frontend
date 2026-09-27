@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { StudentType, HousingCondition, BirthOrder } from '../../../../config/types.js';
-import { useCampuses, useCourses } from '../../../../hooks/index.js';
+import { useCampuses, useCourses, useSchoolYears } from '../../../../hooks/index.js';
 import { submitApplication } from '../../../../services/applicationService.js';
 import { Upload, Plus, Trash2, ArrowLeft, ArrowRight, CheckCircle2, Loader2, Sparkles, AlertCircle } from "lucide-react";
 import AddressSelector from "../../../../components/common/AddressSelector.jsx";
@@ -18,6 +18,14 @@ export default function WizardForm({ onSubmitSuccess }) {
   const [course2, setCourse2] = useState("");
 
   const { data: campuses = [], isLoading: isLoadingCampuses } = useCampuses();
+  const { data: schoolYears = [], isLoading: isLoadingSchoolYears } = useSchoolYears();
+
+  const openSchoolYear = schoolYears.find((sy) => sy.status === "Open" && sy.is_active)
+                      || schoolYears.find((sy) => sy.status === "Open");
+  const fallbackSchoolYear = schoolYears.find((sy) => sy.is_active) || schoolYears[0];
+  const currentSchoolYear = openSchoolYear || fallbackSchoolYear;
+  const isAdmissionOpen = Boolean(openSchoolYear);
+
   const { data: courses = [], isLoading: isLoadingCourses } = useCourses(
     { campus_id: selectedCampusId, status: 1 },
     { enabled: Boolean(selectedCampusId) }
@@ -322,6 +330,12 @@ export default function WizardForm({ onSubmitSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validateStep(4)) return;
+
+    if (!openSchoolYear) {
+      showError("Admissions are currently closed. There is no open academic year accepting applications at this time.");
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMsg("");
 
@@ -336,7 +350,7 @@ export default function WizardForm({ onSubmitSuccess }) {
       courseApplied1st: course1,
       courseApplied2nd: course2,
       barangayId: barangayId ? parseInt(barangayId) : undefined,
-      schoolYear: "2026-2027",
+      school_year_id: openSchoolYear.id,
       studentType,
       lrn,
       lastName,
@@ -463,9 +477,24 @@ export default function WizardForm({ onSubmitSuccess }) {
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 font-sans">CBSUA Student Application</h2>
             <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1">Digital Student Directory Form (ADM-FR-002) - Rev.: 3</p>
           </div>
-          <div className="hidden sm:flex bg-emerald-50 p-2 rounded border border-emerald-100 items-center gap-1 text-[11px] font-bold text-emerald-700 shrink-0">
-            <Sparkles size={12} className="text-emerald-600" />
-            <span>Pre-filled PDF Ready</span>
+          <div className="flex items-center gap-2">
+            {currentSchoolYear && (
+              <span
+                className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold flex items-center gap-1.5 shadow-xs ${
+                  isAdmissionOpen
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-rose-50 text-rose-800 border-rose-200"
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${isAdmissionOpen ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} />
+                <span>A.Y. {currentSchoolYear.name}</span>
+                <span className="text-[9px] uppercase font-sans font-bold">({currentSchoolYear.status || "Closed"})</span>
+              </span>
+            )}
+            <div className="hidden sm:flex bg-emerald-50 p-2 rounded border border-emerald-100 items-center gap-1 text-[11px] font-bold text-emerald-700 shrink-0">
+              <Sparkles size={12} className="text-emerald-600" />
+              <span>Pre-filled PDF Ready</span>
+            </div>
           </div>
         </div>
 
@@ -499,6 +528,18 @@ export default function WizardForm({ onSubmitSuccess }) {
           ))}
         </div>
       </div>
+
+      {!isLoadingSchoolYears && !isAdmissionOpen && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-3.5 sm:p-4 m-3 sm:m-6 text-xs sm:text-sm text-amber-900 rounded-r-lg flex items-start gap-3 shadow-xs">
+          <AlertCircle size={20} className="text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-bold block">Admissions are Currently Closed</span>
+            <span className="text-amber-800 text-xs mt-0.5 block">
+              There is currently no open Academic School Year accepting online admission applications. Please verify with the University Admission Office.
+            </span>
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="bg-rose-50 border-l-4 border-rose-500 p-3.5 sm:p-4 m-3 sm:m-6 text-xs sm:text-sm text-rose-800 rounded-r-lg flex items-center justify-between shadow-sm animate-pulse">
@@ -564,13 +605,33 @@ export default function WizardForm({ onSubmitSuccess }) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">School Year (SY)</label>
-                <input
-                  type="text"
-                  value="2026-2027"
-                  disabled
-                  className="w-full border border-gray-200 rounded-lg p-2.5 bg-gray-100 text-gray-500 text-sm font-medium"
-                />
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1">
+                  School Year (SY)
+                  {isLoadingSchoolYears && <span className="text-[10px] text-emerald-600 lowercase ml-1">(loading...)</span>}
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={currentSchoolYear ? `A.Y. ${currentSchoolYear.name}` : (isLoadingSchoolYears ? "Loading..." : "No School Year")}
+                    disabled
+                    className={`w-full border rounded-lg p-2.5 text-sm font-bold pr-20 ${
+                      isAdmissionOpen
+                        ? "border-emerald-200 bg-emerald-50/40 text-emerald-900 font-mono"
+                        : "border-rose-200 bg-rose-50/50 text-rose-800"
+                    }`}
+                  />
+                  {currentSchoolYear && (
+                    <span
+                      className={`absolute right-2 top-1/2 -translate-y-1/2 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                        isAdmissionOpen
+                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                          : "bg-rose-100 text-rose-800 border border-rose-300"
+                      }`}
+                    >
+                      {currentSchoolYear.status || "Closed"}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -1949,14 +2010,20 @@ export default function WizardForm({ onSubmitSuccess }) {
           ) : (
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="flex items-center justify-center gap-2 px-5 sm:px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition uppercase tracking-wider disabled:opacity-50 cursor-pointer shadow-sm hover:shadow"
+              disabled={isSubmitting || !isAdmissionOpen}
+              className={`flex items-center justify-center gap-2 px-5 sm:px-8 py-3 rounded-lg text-xs font-bold transition uppercase tracking-wider shadow-sm ${
+                !isAdmissionOpen
+                  ? "bg-slate-400 text-white cursor-not-allowed opacity-80"
+                  : "bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer disabled:opacity-50 hover:shadow"
+              }`}
             >
               {isSubmitting ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
                   <span>Submitting...</span>
                 </>
+              ) : !isAdmissionOpen ? (
+                <span>Admissions Closed</span>
               ) : (
                 <>
                   <CheckCircle2 size={14} className="text-emerald-100" />
