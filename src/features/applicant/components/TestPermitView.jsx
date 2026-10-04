@@ -1,10 +1,19 @@
 import React from "react";
-import { Printer, X } from "lucide-react";
+import { Printer, X, Download } from "lucide-react";
+import { getStorageUrl } from "../../../utils/imageUrl.js";
 
 export default function TestPermitView({ application, onClose }) {
   const handlePrint = () => {
     window.print();
   };
+
+  const appNo = application.applicationNo || application.id;
+  const rawApi = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+  let backendBaseUrl = rawApi.replace(/\/api\/?$/, "");
+  if (backendBaseUrl === "http://localhost" || backendBaseUrl === "localhost") {
+    backendBaseUrl = "http://localhost:8000";
+  }
+  const pdfDownloadUrl = `${backendBaseUrl}/admission/pdf-permit/${encodeURIComponent(appNo)}`;
 
   const formattedDOB = application.dateOfBirth
     ? new Date(application.dateOfBirth).toLocaleDateString("en-US", {
@@ -32,7 +41,15 @@ export default function TestPermitView({ application, onClose }) {
           <h2 className="text-sm font-bold text-slate-900 font-sans">CBSUA - College Admission Test (CAT) Permit</h2>
           <p className="text-xs text-slate-500 mt-0.5 font-medium">Download or print your official entrance examination ticket</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-2 sm:gap-3">
+          <a
+            href={pdfDownloadUrl}
+            download
+            className="flex items-center gap-2 px-3.5 py-2 bg-blue-600 text-white rounded font-bold text-xs hover:bg-blue-700 transition shadow-sm cursor-pointer"
+          >
+            <Download size={15} />
+            <span>Download PDF</span>
+          </a>
           <button
             onClick={handlePrint}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded font-bold text-xs hover:bg-emerald-700 transition shadow-sm cursor-pointer"
@@ -56,11 +73,11 @@ export default function TestPermitView({ application, onClose }) {
         
         <div className="flex justify-between items-start border-b border-slate-300 pb-4 mb-4">
           <div className="flex gap-4 items-center">
-            <div className="w-16 h-16 rounded-full border-2 border-emerald-600 flex flex-col items-center justify-center bg-emerald-50 text-center relative overflow-hidden shrink-0">
-              <span className="font-extrabold text-[10px] text-emerald-800 leading-none">CBSUA</span>
-              <span className="text-[6px] text-amber-600 font-bold uppercase tracking-tighter">1918</span>
-              <div className="absolute inset-1 rounded-full border border-dashed border-emerald-400 pointer-events-none"></div>
-            </div>
+            <img 
+              src="/images/cbsua.png" 
+              alt="CBSUA Seal" 
+              className="w-16 h-16 object-contain shrink-0" 
+            />
 
             <div>
               <p className="text-[10px] uppercase font-semibold text-gray-500 tracking-wider">Republic of the Philippines</p>
@@ -149,7 +166,7 @@ export default function TestPermitView({ application, onClose }) {
               {application.photoUrl ? (
                 <div className="w-full h-full min-h-[160px] border border-slate-300 flex items-center justify-center overflow-hidden bg-white">
                   <img
-                    src={application.photoUrl}
+                    src={getStorageUrl(application.photoUrl)}
                     alt="Applicant biometric photo"
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"

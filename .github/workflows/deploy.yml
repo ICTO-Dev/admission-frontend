@@ -1,0 +1,180 @@
+name: Deploy admission frontend
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version part to bump'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+      rollback_to:
+        description: 'Roll back to this version instead of building (e.g. v1.2.3). Leave blank for a normal deploy.'
+        type: string
+        default: ''
+
+permissions:
+  id-token: write
+  contents: write        # required to create tags and releases
+
+env:
+  AWS_REGION: ap-southeast-1
+  S3_BUCKET: cbsua-admission-frontend
+  CF_ALIAS: admission.cbsua.edu.ph
+  API_BASE_URL: https://admission-api.cbsua.edu.ph/api
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # need full history so tags are visible
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::322909724195:role/cbsua-core-github-deploy
+          aws-region: ${{ env.AWS_REGION }}
+
+      # ==================================================================
+      # ROLLBACK PATH
+      # Each deploy archives its dist/ to s3://<bucket>/releases/<version>/,
+      # so rolling back is a server-side copy — no rebuild, no npm install,
+      # and byte-identical to what was previously live.
+      # ==================================================================
+      - name: Roll back to a previous release
+        if: inputs.rollback_to != ''
+        run: |
+          VER="${{ inputs.rollback_to }}"
+          aws s3 ls "s3://$S3_BUCKET/releases/$VER/" >/dev/null 2>&1 \
+            || { echo "::error::release $VER not found in S3"; exit 1; }
+
+          aws s3 sync "s3://$S3_BUCKET/releases/$VER/" "s3://$S3_BUCKET/" \
+            --delete --exclude "releases/*" \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp "s3://$S3_BUCKET/releases/$VER/index.html" "s3://$S3_BUCKET/index.html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+          DIST=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Aliases.Items, '${CF_ALIAS}')].Id" \
+            --output text)
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
+          echo "Rolled back to $VER"
+
+      # ==================================================================
+      # NORMAL DEPLOY PATH
+      # ==================================================================
+      - name: Compute version
+        id: version
+        if: inputs.rollback_to == ''
+        run: |
+          git fetch --tags --force
+          LATEST=$(git tag -l 'v*.*.*' --sort=-v:refname | head -n1)
+          [ -z "$LATEST" ] && LATEST="v0.0.0"
+
+          MAJOR=$(echo "${LATEST#v}" | cut -d. -f1)
+          MINOR=$(echo "${LATEST#v}" | cut -d. -f2)
+          PATCH=$(echo "${LATEST#v}" | cut -d. -f3)
+
+          case "${{ inputs.bump || 'patch' }}" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            *)     PATCH=$((PATCH+1)) ;;
+          esac
+
+          VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $VERSION"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: inputs.rollback_to == ''
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install
+        if: inputs.rollback_to == ''
+        run: npm ci
+
+      # VITE_* values are substituted into the bundle at BUILD time. Pointing
+      # this at the wrong host means a rebuild, not a config change. The /api
+      # suffix is required: src/services/api.js appends bare paths such as
+      # /student-applications directly to the base.
+      - name: Build
+        if: inputs.rollback_to == ''
+        env:
+          VITE_API_BASE_URL: ${{ env.API_BASE_URL }}
+          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          npm run build
+          test -f dist/index.html || { echo "::error::dist/index.html missing"; exit 1; }
+          if grep -rl "127.0.0.1:8000" dist/ >/dev/null 2>&1; then
+            echo "::error::localhost API URL leaked into the bundle"; exit 1
+          fi
+
+      # Archive first, then promote. If the sync to root fails halfway, the
+      # archived copy is still complete and can be re-promoted.
+      - name: Archive release to S3
+        if: inputs.rollback_to == ''
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          aws s3 sync dist/ "s3://$S3_BUCKET/releases/$VERSION/" --delete
+
+      # Hashed assets are immutable and cached hard; index.html must never be
+      # cached, or users keep loading an old bundle that references deleted JS.
+      - name: Promote to live
+        if: inputs.rollback_to == ''
+        run: |
+          aws s3 sync dist/ "s3://$S3_BUCKET/" --delete \
+            --exclude "index.html" --exclude "releases/*" \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 cp dist/index.html "s3://$S3_BUCKET/index.html" \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: Invalidate CloudFront
+        if: inputs.rollback_to == ''
+        run: |
+          DIST=$(aws cloudfront list-distributions \
+            --query "DistributionList.Items[?contains(Aliases.Items, '${CF_ALIAS}')].Id" \
+            --output text)
+          test -n "$DIST" || { echo "::error::no distribution with alias ${CF_ALIAS}"; exit 1; }
+          aws cloudfront create-invalidation --distribution-id "$DIST" --paths "/*"
+
+      # Tag only after a successful deploy, so a version never refers to
+      # something that failed to roll out.
+      - name: Tag and create release
+        if: success() && inputs.rollback_to == ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Deployed $VERSION to S3/CloudFront"
+          git push origin "$VERSION"
+
+          PREV=$(git tag -l 'v*.*.*' --sort=-v:refname | sed -n '2p')
+          if [ -n "$PREV" ]; then
+            NOTES=$(git log --pretty='- %s (%an)' "$PREV..HEAD")
+          else
+            NOTES=$(git log --pretty='- %s (%an)' -20)
+          fi
+
+          gh release create "$VERSION" --title "$VERSION" --notes "$(cat <<EOF
+          Deployed to https://${CF_ALIAS}
+
+          Archived at: s3://${S3_BUCKET}/releases/${VERSION}/
+
+          ## Changes
+          ${NOTES}
+
+          ## Rollback
+          Run this workflow manually with **rollback_to** set to a previous
+          version (e.g. \`${PREV}\`). It re-promotes the archived build from
+          S3 — no rebuild, byte-identical to what was live.
+          EOF
+          )"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ApplicationStatus } from "../../../../config/types.js";
-import { fetchApplicationByNo } from "../../../../services/mockDb.js";
+import { fetchApplicationByNo } from "../../../../services/applicationService.js";
 import { Search, Loader2, Calendar, MapPin, AlertCircle, CheckCircle2, XCircle, Clock, FileDown } from "lucide-react";
 import OfficialFormView from "../OfficialFormView.jsx";
 import TestPermitView from "../TestPermitView.jsx";
