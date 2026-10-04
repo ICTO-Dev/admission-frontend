@@ -24,7 +24,6 @@ import {
   scheduleApplication,
 } from "../../../../services/applicationService.js";
 import examScheduleService from "../../../../services/examScheduleService.js";
-import { fetchSlots } from "../../../../services/mockDb.js";
 import OfficialFormView from "../../../applicant/components/OfficialFormView.jsx";
 import PaginationControl from "../scheduling/PaginationControl.jsx";
 import ApplicantEvaluationModal from "./ApplicantEvaluationModal.jsx";
@@ -33,7 +32,7 @@ import { useAuth, useSchoolYears } from "../../../../hooks/index.js";
 export default function ApplicantSubmissionsPage() {
   const { user } = useAuth();
   const campusName = user?.campus?.name || "Main Campus (Pili)";
-  const { data: schoolYears = [] } = useSchoolYears();
+  const { data: schoolYears = [], isLoading: isSYLoading } = useSchoolYears();
   const defaultSY = schoolYears.find((sy) => sy.status === "Open" && sy.is_active)
                  || schoolYears.find((sy) => sy.status === "Open")
                  || schoolYears.find((sy) => sy.is_active)
@@ -159,15 +158,10 @@ export default function ApplicantSubmissionsPage() {
           campus_id: user?.campus_id || undefined,
           school_year_id: effectiveSyId || undefined,
         });
-        if (realSlots && realSlots.length > 0) {
-          setSlots(realSlots);
-        } else {
-          const slotsData = await fetchSlots();
-          setSlots(slotsData || []);
-        }
+        setSlots(realSlots || []);
       } catch (slotErr) {
-        const slotsData = await fetchSlots();
-        setSlots(slotsData || []);
+        console.warn("Could not load exam slots from API:", slotErr);
+        setSlots([]);
       }
     } catch (err) {
       console.error("Error fetching applicant submissions:", err);
@@ -178,8 +172,21 @@ export default function ApplicantSubmissionsPage() {
 
   // Re-fetch when page, search query, status filter, page size, or campus/school year changes
   useEffect(() => {
+    // Huwag mag-fetch habang naglo-load pa ang school years list o habang hinihintay pa ang default school year
+    if (isSYLoading) return;
+    if (schoolYears.length > 0 && !selectedSchoolYearId && defaultSY?.id) return;
+
     loadData(currentPage, debouncedSearch, statusFilter, pageSize);
-  }, [currentPage, debouncedSearch, statusFilter, pageSize, selectedSchoolYearId, activeSchoolYear?.id, user?.campus_id]);
+  }, [
+    currentPage,
+    debouncedSearch,
+    statusFilter,
+    pageSize,
+    selectedSchoolYearId,
+    activeSchoolYear?.id,
+    user?.campus_id,
+    isSYLoading
+  ]);
 
   const handleApproveForExam = async (appId) => {
     setIsApproving(true);

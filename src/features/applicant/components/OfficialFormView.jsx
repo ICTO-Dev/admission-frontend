@@ -1,6 +1,7 @@
 import React from "react";
 import { BirthOrder, HousingCondition, StudentType } from "../../../config/types.js";
 import { Printer, X } from "lucide-react";
+import { getStorageUrl } from "../../../utils/imageUrl.js";
 
 export default function OfficialFormView({ application, onClose }) {
   const handlePrint = () => {
@@ -175,7 +176,7 @@ export default function OfficialFormView({ application, onClose }) {
               <div className="absolute right-1 top-6 w-[110px] h-[110px] border border-black flex flex-col items-center justify-center bg-gray-50 text-center p-1 z-10">
                 {application?.photoUrl ? (
                   <img
-                    src={application.photoUrl}
+                    src={getStorageUrl(application.photoUrl)}
                     alt="Applicant Photo"
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"

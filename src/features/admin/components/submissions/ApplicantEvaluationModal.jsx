@@ -25,6 +25,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { ApplicationStatus } from "../../../../config/types.js";
+import { getStorageUrl } from "../../../../utils/imageUrl.js";
 
 export default function ApplicantEvaluationModal({
   application,
@@ -132,7 +133,7 @@ export default function ApplicantEvaluationModal({
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 rounded-xl bg-white border-2 border-emerald-400/40 overflow-hidden flex flex-col items-center justify-center shrink-0 shadow-md">
               {app.photoUrl ? (
-                <img src={app.photoUrl} alt="Applicant 2x2" className="w-full h-full object-cover" />
+                <img src={getStorageUrl(app.photoUrl)} alt="Applicant 2x2" className="w-full h-full object-cover" />
               ) : (
                 <span className="text-[9px] font-bold text-slate-400 text-center leading-tight">
                   NO<br />PHOTO
